@@ -24,9 +24,25 @@
 ============================
 
 - dont do any thing more just enhance the code (pagination , filters)
-- try to find away to link the app with notion database
-- exports and sync data with cloud to not loss it 
+- exports,imports and sync with home server data with cloud to not loss it 
 - if event on the day u cannot added in other day unless u add flag multiple when u create a event 
 - share
 - make a schedule notify in event this will check if this event is already linked with day then take the day date then goto event time and make notify before it with (x time)
 
+=======================
+main page 
+    - KPIs
+
+
+filters
+
+
+setting page 
+    - make local and notion database
+    - for local we need export , import function
+    - implement local DB 
+
+  
+structure the files 
+
+understand how animation work and do more 

@@ -1,10 +1,19 @@
-import { StyleSheet, ScrollView, View, Dimensions } from "react-native"
-import { useRouter } from "expo-router"
-import { Card, Text, useTheme } from "react-native-paper"
 import MainContainer from "@/components/shared/MainContainer"
-import { ThemedText } from "@/components/ThemedText"
 import { MaterialCommunityIcons } from "@expo/vector-icons"
+import * as Notifications from "expo-notifications"
+import { useRouter } from "expo-router"
+import { useEffect } from "react"
+import { Dimensions, ScrollView, StyleSheet, View } from "react-native"
+import { Card, Text, useTheme } from "react-native-paper"
 
+// Configure the notification handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 const cards = [
   { id: 1, title: "Sprint", icon: "run", navigateTo: "sprint" },
   { id: 2, title: "Days", icon: "calendar-today", navigateTo: "day" },
@@ -19,8 +28,30 @@ export default function ToolsScreen() {
   const theme = useTheme()
   const router = useRouter()
   const windowWidth = Dimensions.get("window").width
-
   const cardWidth = windowWidth < 600 ? windowWidth / 2 - 24 : windowWidth / 3 - 32
+
+
+  useEffect(() => {
+    async function requestPermissions() {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== "granted") {
+        alert("Permission for notifications was denied!");
+      }
+    }
+    requestPermissions();
+  }, []);
+
+  function scheduleNotificationHandler() {
+    Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Look at that notification",
+        body: "I'm so proud of myself!",
+      },
+      // @ts-ignore
+      trigger: { seconds: 5 }, // Triggers after 5 seconds
+    });
+  }
+
 
   return (
     <MainContainer>
@@ -41,6 +72,19 @@ export default function ToolsScreen() {
               </Card.Content>
             </Card>
           ))}
+
+          <Card
+            key={2222}
+            style={[styles.card, { width: cardWidth, backgroundColor: theme.colors.surface }]}
+            onPress={scheduleNotificationHandler}
+          >
+            <Card.Content style={styles.cardContent}>
+              <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary }]}>
+                <MaterialCommunityIcons name={'bell'} size={32} color={theme.colors.onPrimary} />
+              </View>
+              <Text style={[styles.title, { color: theme.colors.onSurface }]}>{'Schedule Notification'}</Text>
+            </Card.Content>
+          </Card>
         </View>
       </ScrollView>
     </MainContainer>
@@ -50,7 +94,7 @@ export default function ToolsScreen() {
 const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
-    marginVertical:70
+    marginVertical: 20
   },
   scrollViewContent: {
     padding: 10,

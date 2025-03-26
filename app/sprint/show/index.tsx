@@ -1,6 +1,5 @@
 import { getSprintById } from "@/actions/notion"
 import { Sprint } from "@/types/general"
-import { useRoute, type RouteProp } from "@react-navigation/native"
 import { useQuery } from "@tanstack/react-query"
 import { useLocalSearchParams } from "expo-router"
 import { ScrollView, StyleSheet, View } from "react-native"

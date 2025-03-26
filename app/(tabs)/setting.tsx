@@ -7,7 +7,7 @@ export default function HomeScreen() {
   return (
     <MainContainer>
       <Text>
-        KPIs
+        Setting
       </Text>
     </MainContainer>
 

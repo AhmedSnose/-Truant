@@ -8,3 +8,4 @@
 
 # Ignore test coverage reports
 /coverage
+node_modules/

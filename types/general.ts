@@ -53,14 +53,13 @@ export type FormData = {
   }
   
   export interface Sprint {
-    id: string;
+    id?: string;
     title: string;
     totalTime: string | null;
-    goalTime: string | null;
+    goalTime?: string | null;
     startDate: string | null;
     endDate: string | null;
     description: string | null;
     days?: Day[];
+    statusId?:Status
   }
-
-  

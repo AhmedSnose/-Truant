@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Status as __Status } from "@/db/schema";
+import { schema } from "@/db/schema";
 
 import type { Day, Event, FormData, Sprint, Status } from "@/types/general";
 import { Client } from "@notionhq/client";
@@ -119,7 +119,7 @@ export const getAllSprintsWithDetails = async (): Promise<Sprint[]> => {
   );
 };
 
-export const getAllSprints = async (): Promise<Sprint[]> => {
+export const getAllSprints = async (): Promise<schema.Sprint[]> => {
   const query = (await notion.databases.query({
     database_id: NOTION_SPRINTS_DATABASE_ID,
   })) as QueryDatabaseResponse;
@@ -284,7 +284,7 @@ export const removeSprint = async (sprintId: string): Promise<void> => {
 export const getAllDays = async (
   fetchWithEvents = false,
   startCursor?: string,
-  pageSize = 10,
+  pageSize = 100,
   filter?: { property: string; value: string }
 ): Promise<{ days: Day[]; nextCursor: string | null }> => {
   const query: any = {
@@ -491,7 +491,7 @@ export const removeDay = async (dayId: string): Promise<void> => {
 
 export const getAllEvents = async (
   startCursor?: string,
-  pageSize = 10
+  pageSize = 1000
 ): Promise<{ events: Event[]; nextCursor: string | null }> => {
   const query = (await notion.databases.query({
     database_id: NOTION_EVENTS_DATABASE_ID,
