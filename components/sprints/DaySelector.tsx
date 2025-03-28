@@ -1,13 +1,12 @@
-import { updateSprint } from "@/actions/notion"
-import type { Day, Sprint } from "@/types/general"
+import * as schema from "@/db/schema"
+import { linkDaysToSprint } from "@/services/SprintService"
 import { useQueryClient } from "@tanstack/react-query"
 import React, { useEffect, useState } from "react"
 import { ScrollView, StyleSheet, View } from "react-native"
 import { Button, Checkbox, Text, useTheme } from "react-native-paper"
-import * as schema from "@/db/schema";
 
 interface DaySelectorProps {
-  days: Day[]
+  days: schema.Day[]
   selectedSprint: schema.Sprint | null
   onClose: () => void
   refetchSprints: () => void
@@ -19,48 +18,47 @@ export default function DaySelector({
   onClose,
   refetchSprints,
 }: DaySelectorProps) {
-  const [selectedDays, setSelectedDays] = useState<string[]>([])
+  const [selectedDays, setSelectedDays] = useState<number[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const theme = useTheme()
   const queryClient = useQueryClient()
 
   useEffect(() => {
     if (selectedSprint?.days) {
-      setSelectedDays(selectedSprint.days.map((d) => d.id!))
+      setSelectedDays(selectedSprint?.days.map((d) => d.id))
     } else {
       setSelectedDays([])
     }
   }, [selectedSprint])
 
-  const toggleDaySelection = (id: string) => {
+  const toggleDaySelection = (id: number) => {
     setSelectedDays((prev) =>
       prev.includes(id) ? prev.filter((dayId) => dayId !== id) : [...prev, id]
     )
   }
 
   const handleSubmit = async () => {
-    if (!selectedSprint) return
-    setIsSubmitting(true)
+    if (!selectedSprint) return;
+    setIsSubmitting(true);
 
     try {
-      const filteredSelectedDays = days
-        .filter((day) => selectedDays.includes(day.id!))
-        .map((day) => ({ id: day.id }))
+      const relationDays = days
+        .filter((day) => selectedDays.includes(day.id!)).map((r => Number(r.id)))
 
-      await updateSprint(selectedSprint.id, {
-        ...selectedSprint,
-        days: filteredSelectedDays,
-      })
-      refetchSprints()
-      onClose()
-      // @ts-ignore
-      queryClient.invalidateQueries(["sprint", selectedSprint.id])
+      await linkDaysToSprint(selectedSprint.id, relationDays)
+
+      refetchSprints();
+      onClose();
+      //@ts-ignore
+      queryClient.invalidateQueries(["sprint", selectedSprint.id]);
     } catch (error) {
-      console.error("Error updating sprint:", error)
+      console.error("Error updating sprint:", error);
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
+
+
 
   return (
     <View style={styles.container}>

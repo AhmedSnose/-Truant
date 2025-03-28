@@ -1,9 +1,10 @@
-import { getSprintById } from "@/actions/notion"
+import { show } from "@/services/SprintService"
 import { Sprint } from "@/types/general"
 import { useQuery } from "@tanstack/react-query"
 import { useLocalSearchParams } from "expo-router"
 import { ScrollView, StyleSheet, View } from "react-native"
 import { ActivityIndicator, Card, Text, useTheme } from "react-native-paper"
+import * as schema from "@/db/schema";
 
 
 export default function SprintShowPage() {
@@ -14,9 +15,9 @@ export default function SprintShowPage() {
     data: sprint,
     isLoading,
     error,
-  } = useQuery<Sprint | null>({
+  } = useQuery<schema.Sprint | null>({
     queryKey: ["sprint", id],
-    queryFn: async () => await getSprintById(id),
+    queryFn: async () => await show(+id),
     enabled: !!id,
   })
 
@@ -43,6 +44,7 @@ export default function SprintShowPage() {
           <Text variant="titleLarge" style={styles.title}>
             {sprint?.title || "Untitled Sprint"}
           </Text>
+          <Text variant="bodyMedium">reference {sprint?.referenceId || "N/A"}</Text>
           <Text variant="bodyMedium">Start Date: {sprint?.startDate || "N/A"}</Text>
           <Text variant="bodyMedium">End Date: {sprint?.endDate || "N/A"}</Text>
           <Text variant="bodyMedium">Total Time: {sprint?.totalTime || 0} hours</Text>

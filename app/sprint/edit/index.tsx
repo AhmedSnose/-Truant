@@ -1,6 +1,5 @@
 "use client"
 
-import { createSprint, updateSprint } from "@/actions/notion"
 import { FormData } from "@/types/general"
 import { useRoute } from "@react-navigation/native"
 import { useQueryClient } from "@tanstack/react-query"
@@ -22,17 +21,26 @@ import {
   Text,
   TextInput,
   useTheme,
+  Snackbar,
+  Modal,
+  Portal,
 } from "react-native-paper"
 import { DatePickerModal } from "react-native-paper-dates"
-import { post as createSprintLocal, update as updateSprintLocal } from "@/services/SprintService"; // Import local DB functions
+import {
+  post as createSprintLocal,
+  update as updateSprintLocal,
+  show as showSprintLocal,
+} from "@/services/SprintService"
+import { Sprint } from "@/db/schema"
+import { createSprint, updateSprint } from "@/actions/notion/sprints"
 
 type SprintFormData = {
   title: string
   startDate: string
   endDate: string
   totalTime: number
-  // goalTime removed
-  description?: string // now optional
+  description?: string
+  referenceId?: string
 }
 
 export default function SprintEditPage() {
@@ -41,28 +49,26 @@ export default function SprintEditPage() {
   const theme = useTheme()
   const queryClient = useQueryClient()
   const route = useRoute()
-  const { sprintData }: any = route.params
+  const { sprintData } = route.params as { sprintData?: Sprint }
 
-  // We'll default to today's date if none is provided
   const today = new Date().toISOString().split("T")[0]
 
-  // React Hook Form
   const {
     control,
     handleSubmit,
     formState: { errors },
     setValue,
   } = useForm<SprintFormData>({
-    defaultValues: sprintData || {
-      title: "",
-      startDate: today,
-      endDate: today,
-      totalTime: 0,
-      description: "",
+    defaultValues: {
+      title: sprintData?.title || "",
+      startDate: sprintData?.startDate || today,
+      endDate: sprintData?.endDate || today,
+      totalTime: sprintData?.totalTime || 0,
+      description: sprintData?.description || "",
+      referenceId: sprintData?.referenceId || "",
     },
   })
 
-  // Switches to auto-set start/end date to "today"
   const [useTodayStart, setUseTodayStart] = React.useState<boolean>(
     sprintData?.startDate ? false : true
   )
@@ -70,72 +76,137 @@ export default function SprintEditPage() {
     sprintData?.endDate ? false : true
   )
 
-  // Date pickers visibility
   const [startDatePickerVisible, setStartDatePickerVisible] =
     React.useState(false)
-  const [endDatePickerVisible, setEndDatePickerVisible] = React.useState(false)
+  const [endDatePickerVisible, setEndDatePickerVisible] =
+    React.useState(false)
 
-  // Whenever user toggles "Use today's date" for start, set or clear the date
+  const [snackbarVisible, setSnackbarVisible] = React.useState(false)
+  const [snackbarMsg, setSnackbarMsg] = React.useState("")
+
+  // New state for error confirmation modal
+  const [errorModalVisible, setErrorModalVisible] = React.useState(false)
+  const [errorModalMessage, setErrorModalMessage] = React.useState("")
+
   React.useEffect(() => {
     if (useTodayStart) {
       setValue("startDate", today)
     }
   }, [useTodayStart])
 
-  // Same for end date
   React.useEffect(() => {
     if (useTodayEnd) {
       setValue("endDate", today)
     }
   }, [useTodayEnd])
 
-  // const onSubmit = async (data: SprintFormData) => {
-  //   try {
-  //     if (!data.startDate) data.startDate = today
-  //     if (!data.endDate) data.endDate = today
-
-  //     if (sprintData) {
-  //       // Updating existing sprint
-  //       // @ts-ignore
-  //       await updateSprint(sprintData.id, data)
-  //     } else {
-  //       // Creating new sprint
-  //       //@ts-ignore
-  //       await createSprint(data)
-  //     }
-  //     queryClient.invalidateQueries(["fetchAllSprints"] as never)
-  //     expoRouter.back()
-  //   } catch (error) {
-  //     console.error("Error saving sprint:", error)
-  //     // Optionally show an alert or message
-  //   }
-  // }
-
   const onSubmit = async (data: SprintFormData) => {
     try {
-      if (!data.startDate) data.startDate = today;
-      if (!data.endDate) data.endDate = today;
+      if (!data.startDate) data.startDate = today
+      if (!data.endDate) data.endDate = today
+
+      const referenceIdValue =
+        data.referenceId && data.referenceId.trim() !== ""
+          ? data.referenceId.trim()
+          : null
 
       if (sprintData) {
-        // **Updating existing sprint**
-        // @ts-ignore
-        // await updateSprint(sprintData.id, data); // Update in Notion API
-        await updateSprintLocal(sprintData.id, data); // Update in Local DB
+        await updateSprintLocal(sprintData.id, {
+          ...data,
+          isSynced: 0,
+          referenceId: referenceIdValue,
+        })
       } else {
-        // **Creating new sprint**
-        // @ts-ignore
-        // const notionSprint = await createSprint(data); // Save in Notion API
-        // @ts-ignore
+        await createSprintLocal({
+          ...data,
+          isSynced: 0,
+          referenceId: referenceIdValue,
+        })
+      }
+      queryClient.invalidateQueries(["fetchAllSprints"] as never)
+      expoRouter.back()
+    } catch (error) {
+      console.error("Error saving sprint:", error)
+      setSnackbarMsg("Error saving sprint")
+      setSnackbarVisible(true)
+    }
+  }
 
-        await createSprintLocal(data); // Save in SQLite (Local DB)
+  // Sync button handler – visible only in edit mode
+  const handleSync = async () => {
+    if (!sprintData) return
+    try {
+      let updatedReferenceId = sprintData?.referenceId
+
+      if (sprintData?.referenceId) {
+        // Update existing Notion page
+        await updateSprint(sprintData.referenceId, {
+          days: sprintData.days,
+          description: sprintData.description,
+          endDate: sprintData.endDate,
+          goalTime: sprintData.goalTime || 0,
+          startDate: sprintData.startDate,
+          title: sprintData.title,
+          totalTime: sprintData.totalTime,
+        })
+      } else {
+        // Create a new Notion page
+        const result = await createSprint({
+          days: sprintData?.days,
+          description: sprintData.description || "",
+          endDate: sprintData.endDate,
+          goalTime: sprintData.goalTime || 0,
+          startDate: sprintData.startDate,
+          title: sprintData.title,
+          totalTime: sprintData.totalTime || 0,
+        })
+        updatedReferenceId = result?.id
       }
 
-      queryClient.invalidateQueries(["fetchAllSprints"] as never);
+      // Mark the sprint as synced in local DB
+      await updateSprintLocal(sprintData.id, {
+        ...sprintData,
+        isSynced: 1,
+        referenceId: updatedReferenceId,
+      })
+
+      queryClient.invalidateQueries(["fetchAllSprints"] as never)
+      setSnackbarMsg("Sprint synced successfully")
+      setSnackbarVisible(true)
+      expoRouter.back()
+    } catch (error: any) {
+      if (error.code === "validation_error") {
+        // Show modal asking if user wants to remove the reference link
+        setErrorModalMessage(error.message || "Validation error occurred.")
+        setErrorModalVisible(true)
+      } else {
+        setSnackbarMsg(error.message || "Sync failed")
+        setSnackbarVisible(true)
+      }
+    }
+  }
+
+  // Called when the user confirms removal of the reference link in the error modal
+  const handleRemoveReference = async () => {
+    if (!sprintData) return
+    try {
+      await updateSprintLocal(sprintData.id, {
+        ...sprintData,
+        isSynced: 0,
+        referenceId: null,
+      })
+      queryClient.invalidateQueries(["fetchAllSprints"] as never)
+      setSnackbarMsg("Reference link removed. Please try syncing again.");
+      setSnackbarVisible(true)
       expoRouter.back();
     } catch (error) {
-      console.error("Error saving sprint:", error);
+      console.error("Error removing reference:", error)
+      setSnackbarMsg("Error removing reference")
+      setSnackbarVisible(true)
+    } finally {
+      setErrorModalVisible(false)
     }
-  };
+  }
 
   return (
     <KeyboardAvoidingView
@@ -182,7 +253,6 @@ export default function SprintEditPage() {
                 />
                 <Text style={styles.switchText}>Use Today's Date</Text>
               </View>
-
               {!useTodayStart && (
                 <>
                   <Button
@@ -197,10 +267,7 @@ export default function SprintEditPage() {
                     rules={{ required: "Start date is required" }}
                     render={({ field: { onChange, value } }) => (
                       <>
-                        <HelperText
-                          type="info"
-                          visible={!!value && !errors.startDate}
-                        >
+                        <HelperText type="info" visible={!!value && !errors.startDate}>
                           Current: {value}
                         </HelperText>
                         <HelperText type="error" visible={!!errors.startDate}>
@@ -238,7 +305,6 @@ export default function SprintEditPage() {
                 />
                 <Text style={styles.switchText}>Use Today's Date</Text>
               </View>
-
               {!useTodayEnd && (
                 <>
                   <Button
@@ -253,10 +319,7 @@ export default function SprintEditPage() {
                     rules={{ required: "End date is required" }}
                     render={({ field: { onChange, value } }) => (
                       <>
-                        <HelperText
-                          type="info"
-                          visible={!!value && !errors.endDate}
-                        >
+                        <HelperText type="info" visible={!!value && !errors.endDate}>
                           Current: {value}
                         </HelperText>
                         <HelperText type="error" visible={!!errors.endDate}>
@@ -306,7 +369,7 @@ export default function SprintEditPage() {
               name="totalTime"
             />
 
-            {/* DESCRIPTION (Optional) */}
+            {/* DESCRIPTION */}
             <Controller
               control={control}
               rules={{ required: "Description is required" }}
@@ -339,20 +402,73 @@ export default function SprintEditPage() {
             >
               {sprintData ? "Update Sprint" : "Add Sprint"}
             </Button>
+
+            {/* Sync button visible only in edit mode */}
+            {sprintData && (
+              <Button
+                mode="outlined"
+                onPress={handleSync}
+                style={styles.syncButton}
+              >
+                Sync With Notion
+              </Button>
+            )}
           </Card.Content>
         </Card>
       </ScrollView>
+
+      {/* Snackbar for toaster messages */}
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        style={{ marginBottom: 70 }}
+        action={{
+          label: "Dismiss",
+          onPress: () => setSnackbarVisible(false),
+        }}
+      >
+        {snackbarMsg}
+      </Snackbar>
+
+      {/* Error Confirmation Modal */}
+      <Portal>
+        <Modal
+          visible={errorModalVisible}
+          onDismiss={() => setErrorModalVisible(false)}
+          contentContainerStyle={[
+            styles.modalContent,
+            { backgroundColor: theme.colors.surface },
+          ]}
+        >
+          <Text style={[styles.modalText, { color: theme.colors.onSurface }]}>
+            {errorModalMessage}
+          </Text>
+          <Text style={[styles.modalText, { color: theme.colors.onSurface, marginVertical: 8 }]}>
+            Do you want to remove the reference link?
+          </Text>
+          <View style={styles.modalActions}>
+            <Button mode="contained" onPress={handleRemoveReference} style={styles.modalButton}>
+              Remove Reference
+            </Button>
+            <Button mode="outlined" onPress={() => setErrorModalVisible(false)} style={styles.modalButton}>
+              Cancel
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
     </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
   scrollContent: {
-    padding: 16,
+    padding: 20,
   },
   card: {
     borderRadius: 8,
     paddingBottom: 16,
+    marginBottom: 50,
   },
   cardTitle: {
     fontWeight: "600",
@@ -380,5 +496,25 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     marginTop: 8,
+  },
+  syncButton: {
+    marginTop: 8,
+  },
+  modalContent: {
+    padding: 20,
+    margin: 20,
+    borderRadius: 8,
+  },
+  modalText: {
+    fontSize: 16,
+    textAlign: "center",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 16,
+  },
+  modalButton: {
+    marginHorizontal: 10,
   },
 })

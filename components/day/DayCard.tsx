@@ -3,17 +3,19 @@ import { StyleSheet, View } from "react-native"
 import { Card, Text, TouchableRipple, useTheme } from "react-native-paper"
 import { MaterialIcons } from "@expo/vector-icons"
 import type { Day } from "@/types/general"
+import * as schema from "@/db/schema"
 
 
 interface DayCardProps {
-  day: Day
+  day: schema.Day
   onDelete: () => void
   onUpdate: () => void
   onLink: () => void
   onShow: () => void
+  syncStatus: number
 }
 
-export default function DayCard({ day, onDelete, onUpdate, onLink, onShow }: DayCardProps) {
+export default function DayCard({ day, onDelete, onUpdate, onLink, onShow, syncStatus }: DayCardProps) {
   const theme = useTheme()
 
 
@@ -21,9 +23,24 @@ export default function DayCard({ day, onDelete, onUpdate, onLink, onShow }: Day
     <TouchableRipple onPress={onShow}>
       <Card style={styles.card}>
         <Card.Content>
-          <Text variant="titleLarge" style={[styles.title, { color: theme.colors.primary }]}>
-            {day.title}
-          </Text>
+       <View style={styles.headerContainer}>
+            <Text variant="titleLarge" style={[styles.title, { color: theme.colors.primary }]}>
+              {day.title}
+            </Text>
+            {/* Sync flag indicator */}
+            <View style={styles.syncContainer}>
+              <View
+                style={[
+                  styles.syncDot,
+                  { backgroundColor: syncStatus ? "green" : "red" },
+                ]}
+              />
+              <Text style={[styles.syncLabel, { color: theme.colors.onSurfaceVariant }]}>
+                {syncStatus ? "Synced" : "Not Synced"}
+              </Text>
+            </View>
+          </View>
+
           <Text variant="bodyMedium" style={[styles.date, { color: theme.colors.onSurfaceVariant }]}>
             {day.date}
           </Text>
@@ -78,6 +95,25 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     padding: 8,
+  },
+  syncContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  syncDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  syncLabel: {
+    fontSize: 10,
+    marginLeft: 4,
+  },
+  headerContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 })
 

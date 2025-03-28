@@ -18,7 +18,8 @@ export const getAllSprintsWithDetails = async (): Promise<Sprint[]> => {
       return {
         id: result.id,
         title:
-          result.properties["title"]?.title[0]?.text.content || "Untitled Sprint",
+          result.properties["title"]?.title[0]?.text.content ||
+          "Untitled Sprint",
         totalTime: result.properties["total time"]?.number || null,
         goalTime: result.properties["goal time"]?.number || null,
         startDate: result.properties["start date"]?.date?.start || null,
@@ -49,7 +50,9 @@ export const getAllSprints = async (): Promise<schema.Sprint[]> => {
   }));
 };
 
-export const getSprintById = async (sprintId: number): Promise<schema.Sprint | null> => {
+export const getSprintById = async (
+  sprintId: number
+): Promise<schema.Sprint | null> => {
   if (!sprintId) {
     throw new Error("No sprint id provided");
   }
@@ -79,7 +82,7 @@ export const createSprint = async (data: FormData): Promise<void> => {
   if (!DATABASE_IDS.sprints) {
     throw new Error("Missing Notion database ID for sprints.");
   }
-  await notion.pages.create({
+  return await notion.pages.create({
     parent: { database_id: DATABASE_IDS.sprints },
     properties: {
       title: {
@@ -99,17 +102,17 @@ export const createSprint = async (data: FormData): Promise<void> => {
 export const updateSprint = async (
   id: string,
   data: {
-    days: any;
+    days?: schema.Day[];
     title: string;
-    totalTime: string | null;
-    goalTime: string | null;
+    totalTime: number | null;
+    goalTime: number | null;
     startDate: string | null;
     endDate: string | null;
     description: string | null;
   }
-): Promise<void> => {
+): Promise<any> => {
   try {
-    await notion.pages.update({
+    let body = {
       page_id: id,
       properties: {
         title: { title: [{ text: { content: data.title } }] },
@@ -120,9 +123,15 @@ export const updateSprint = async (
         description: {
           rich_text: [{ text: { content: data.description } }],
         },
-        days: { relation: data.days },
+        // days: { relation: data.days },
       },
-    });
+    };
+
+    if(data?.days?.length) {
+      body.days = data.days; 
+    };
+
+    return await notion.pages.update(body);
   } catch (error) {
     console.error("Error updating sprint:", error);
     throw error;

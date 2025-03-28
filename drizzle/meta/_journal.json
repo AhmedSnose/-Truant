@@ -15,6 +15,48 @@
       "when": 1742915578343,
       "tag": "0001_uneven_giant_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1743037914658,
+      "tag": "0002_windy_la_nuit",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1743039162858,
+      "tag": "0003_late_lady_deathstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1743044097950,
+      "tag": "0004_fancy_boomer",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1743116465122,
+      "tag": "0005_odd_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1743118741134,
+      "tag": "0006_massive_war_machine",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1743129810208,
+      "tag": "0007_easy_bloodstorm",
+      "breakpoints": true
     }
   ]
 }

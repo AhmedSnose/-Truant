@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from "react"
 import { StyleSheet, View, ScrollView } from "react-native"
-import { Text, Checkbox, Button, useTheme } from "react-native-paper"
+import { Text, Checkbox, Button, Snackbar, useTheme } from "react-native-paper"
 import { useQueryClient } from "@tanstack/react-query"
 import { updateDay } from "@/actions/notion"
 import type { Day, Event } from "@/types/general"
+import * as schema from "@/db/schema"
 
 interface EventSelectorProps {
-  selectedDay: Day | null
+  selectedDay: schema.Day | null
   onClose: () => void
   refetchDays: () => void
-  events: Event[]
+  events: schema.Event[]
 }
 
 export default function EventSelector({
@@ -20,6 +21,7 @@ export default function EventSelector({
 }: EventSelectorProps) {
   const [selectedEvents, setSelectedEvents] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [snackbarMessage, setSnackbarMessage] = useState("")
   const theme = useTheme()
   const queryClient = useQueryClient()
 
@@ -43,21 +45,30 @@ export default function EventSelector({
     if (!selectedDay) return
     setIsSubmitting(true)
     try {
-      const filteredSelectedEvents = events
+      // Build the new events relation array (bulk update)
+      const relationEvents = events
         .filter((ev) => selectedEvents.includes(ev.id!))
         .map((ev) => ({ id: ev.id }))
 
+      // Instead of spreading all of selectedDay (which may include outdated events),
+      // pass only the required fields along with the new events array.
       await updateDay(selectedDay.id!, {
-        ...selectedDay,
-        events: filteredSelectedEvents,
+        title: selectedDay.title,
+        report: selectedDay.report,
+        goalTime: selectedDay.goalTime || 0,
+        totalTime: selectedDay.totalTime || 0,
+        date: selectedDay.date,
+        events: relationEvents,
+        status: selectedDay.status,
       })
 
+      setSnackbarMessage("Day updated successfully! ✅")
       refetchDays()
-      // @ts-ignore
       queryClient.invalidateQueries(["fetchAllDays"])
       onClose()
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating day:", error)
+      setSnackbarMessage("Error updating day: " + (error.message || ""))
     } finally {
       setIsSubmitting(false)
     }
@@ -69,7 +80,6 @@ export default function EventSelector({
         Select Events for {selectedDay?.title}
       </Text>
 
-      {/* Scrollable checkboxes */}
       <ScrollView style={styles.scrollArea}>
         {events.map((event) => (
           <View key={event.id} style={styles.checkboxContainer}>
@@ -85,7 +95,6 @@ export default function EventSelector({
         ))}
       </ScrollView>
 
-      {/* Fixed buttons at bottom */}
       <View style={styles.buttonContainer}>
         <Button
           mode="contained"
@@ -96,14 +105,22 @@ export default function EventSelector({
         >
           Save
         </Button>
-        <Button
-          mode="outlined"
-          onPress={onClose}
-          style={styles.button}
-        >
+        <Button mode="outlined" onPress={onClose} style={styles.button}>
           Cancel
         </Button>
       </View>
+
+      <Snackbar
+        visible={!!snackbarMessage}
+        onDismiss={() => setSnackbarMessage("")}
+        duration={3000}
+        action={{
+          label: "OK",
+          onPress: () => setSnackbarMessage(""),
+        }}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </View>
   )
 }
@@ -122,8 +139,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 16,
     marginTop: 8,
-    // leave space at bottom so items aren't hidden behind the fixed buttons
-    marginBottom: 60,
+    marginBottom: 60, // leave space at bottom so items aren't hidden
   },
   checkboxContainer: {
     flexDirection: "row",
@@ -135,7 +151,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   buttonContainer: {
-    position: "absolute",  // pin to bottom
+    position: "absolute", // pin to bottom
     bottom: 0,
     left: 0,
     right: 0,

@@ -1,4 +1,5 @@
 import { Category, Priority, Truant, TruantWithRelations, Status as _Status } from "@/db/schema";
+import * as schema from "@/db/schema";
 
 export type TruantResponse = Truant & {
   category: Category;
@@ -9,12 +10,12 @@ export type TruantResponse = Truant & {
 
 export type FormData = {
     title: string;
-    goalTime: string;
-    totalTime: string;
+    goalTime: number;
+    totalTime: number;
     startDate: string;
     endDate: string;
     description: string;
-    days?: Day[];
+    days?: schema.Day[];
   };
   
   export interface Event {
@@ -28,7 +29,7 @@ export type FormData = {
     weight:number;
     report:string;
     days?: Day[];
-    truantId?:string
+    truantId?:number
     statusId?:string
     status?:_Status,
     truant?:TruantWithRelations

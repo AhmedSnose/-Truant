@@ -1,51 +1,62 @@
+import { MaterialIcons } from "@expo/vector-icons"
+import BottomSheet, {
+  BottomSheetScrollView,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { eq } from "drizzle-orm"
+import { drizzle } from "drizzle-orm/expo-sqlite"
+import { router, useNavigation } from "expo-router"
+import { useSQLiteContext } from "expo-sqlite"
 import React, { useCallback, useMemo, useRef, useState } from "react"
 import { FlatList, StyleSheet, TouchableOpacity, View } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
-import { ActivityIndicator, Button, Modal, Portal, Text, useTheme } from "react-native-paper"
-import { MaterialIcons } from "@expo/vector-icons"
+import {
+  ActivityIndicator,
+  Button,
+  FAB,
+  Modal,
+  Portal,
+  Text,
+  useTheme,
+} from "react-native-paper"
 
-import BottomSheet, {
-  BottomSheetView,
-  BottomSheetScrollView,
-} from "@gorhom/bottom-sheet"
-
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { router, useNavigation } from "expo-router"
-
-import { eq } from "drizzle-orm"
-import { drizzle } from "drizzle-orm/expo-sqlite"
-import { useSQLiteContext } from "expo-sqlite"
-
-import { getAllDays, getAllEvents, removeDay } from "@/actions/notion"
 import * as schema from "@/db/schema"
-import type { Day, Event } from "@/types/general"
 
-import CustomBackdrop from "@/components/day/CustomBackdrop" // your dim overlay
 import DayCard from "@/components/day/DayCard"
 import EventSelector from "@/components/day/EventSelector"
+import * as dayService from "@/services/DayService"
+import * as eventService from "@/services/EventService"
+import CustomBackdrop from "@/components/day/CustomBackdrop"
 
 export default function DayPage() {
   const theme = useTheme()
   const [deleteModalVisible, setDeleteModalVisible] = useState(false)
-  const [selectedDay, setSelectedDay] = useState<Day | null>(null)
+  const [selectedDay, setSelectedDay] = useState<schema.Day | null>(null)
   const navigation = useNavigation()
-
   const bottomSheetRef = useRef<BottomSheet>(null)
   const snapPoints = useMemo(() => ["50%", "80%"], [])
-
   const queryClient = useQueryClient()
   const expoDb = useSQLiteContext()
   const db = drizzle(expoDb, { schema })
+  const [state, setState] = React.useState({ open: false });
+  const onStateChange = ({ open }: { open: boolean }) => setState({ open });
+  const { open } = state;
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMsg, setSnackbarMsg] = useState("");
+
+
 
   // -- Fetch days --
   const {
-    data,
+    data: days,
     isLoading: fetchDaysLoading,
     error: fetchDayError,
     refetch: refetchAllDays,
-  } = useQuery<{ days: Day[]; nextCursor: string | null }>({
+  } = useQuery<schema.Day[]>({
     queryKey: ["fetchAllDays"],
-    queryFn: async () => await getAllDays(true),
+    queryFn: async () => await dayService.index(),
   })
 
   // -- Fetch events --
@@ -54,56 +65,72 @@ export default function DayPage() {
     isLoading: fetchEventsLoading,
     error: fetchEventError,
     refetch: refetchAllEvents,
-  } = useQuery<{ events: Event[]; nextCursor: string | null }>({
+  } = useQuery<schema.Event[]>({
     queryKey: ["fetchAllEvents"],
-    queryFn: async () => await getAllEvents(),
+    queryFn: async () => await eventService.index(),
   })
+
+  const syncAPIWithLocalDb = async () => {
+    try {
+      setSyncLoading(true);
+      await dayService.syncDaysAPIWithLocalDb();
+      // Invalidate the localSprints query so that the list refreshes
+      //@ts-ignore
+      await queryClient.invalidateQueries(["localSprints"]);
+      setSnackbarMsg("Sync completed successfully");
+      setSnackbarVisible(true);
+    } catch (error: any) {
+      console.error("Error syncing API with local DB:", error);
+      setSnackbarMsg("Sync failed: " + error.message);
+      setSnackbarVisible(true);
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
 
   const handleSheetChanges = useCallback((index: number) => {
     console.log("Bottom sheet index:", index)
   }, [])
 
   // -- Delete a Day --
-  const handleDelete = async (id: string) => {
-    await removeDay(id)
+  const handleDelete = async (id: number) => {
+    await dayService.remove(id)
     queryClient.invalidateQueries(["fetchAllDays"] as never)
     setDeleteModalVisible(false)
   }
-  const confirmDelete = (day: Day) => {
+  const confirmDelete = (day: schema.Day) => {
     setSelectedDay(day)
     setDeleteModalVisible(true)
   }
 
   // -- Update a Day --
-  const handleUpdate = async (day: Day) => {
-    // If you need day.status from DB, you can fetch it here
+  const handleUpdate = async (day: schema.Day) => {
+    // Optionally fetch related status if needed
     const status = db.select().from(schema.statuses).where(eq(schema.statuses.id, Number(day?.statusId))).get()
     day.status = status
-
-    // Navigate to your Edit page
-    // @ts-ignore
+    //@ts-ignore
     navigation.navigate("edit/index", { dayData: day })
   }
 
   // -- Link day with events -> open bottom sheet --
-  const handleLinkDayWithEvents = (day: Day) => {
+  const handleLinkDayWithEvents = (day: schema.Day) => {
     setSelectedDay(day)
     bottomSheetRef.current?.expand()
   }
 
-  // -- Show a day details (if you have a details page) --
-  const handleShow = (id: string) => {
+  // -- Show a day details --
+  const handleShow = (id: number) => {
     router.push(`./day/${id}`)
   }
 
-  // -- Add a new day -> open edit page with no data --
+  // -- Add a new day --
   const handleAddDay = () => {
-    // @ts-ignore
+    //@ts-ignore
     navigation.navigate("edit/index", { dayData: null })
   }
 
-  // -- Handle loading or error states --
-  if (fetchDaysLoading) {
+  if (fetchDaysLoading || fetchEventsLoading) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -113,11 +140,11 @@ export default function DayPage() {
       </View>
     )
   }
-  if (fetchDayError) {
+  if (fetchDayError || fetchEventError) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <Text style={[styles.errorText, { color: theme.colors.error }]}>
-          Error: {String(fetchDayError)}
+          Error: {String(fetchDayError || fetchEventError)}
         </Text>
       </View>
     )
@@ -126,11 +153,12 @@ export default function DayPage() {
   return (
     <GestureHandlerRootView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* List of Days */}
-      {data?.days?.length ? (
+      {days?.length ? (
         <FlatList
-          data={data?.days}
+          data={days}
           renderItem={({ item }) => (
             <DayCard
+              syncStatus={item.isSynced}
               day={item}
               onDelete={() => confirmDelete(item)}
               onUpdate={() => handleUpdate(item)}
@@ -138,40 +166,51 @@ export default function DayPage() {
               onShow={() => handleShow(item.id!)}
             />
           )}
-          keyExtractor={(item) => item.id!}
+          keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.list}
         />
       ) : (
         <View style={styles.emptyState}>
-          <Text>No truants found. Add a new one to get started!</Text>
+          <Text>No days found. Add a new one to get started!</Text>
         </View>
       )}
 
-      {/* Floating Action Button */}
-      <TouchableOpacity style={[styles.fabStyle, { backgroundColor: theme.colors.primary }]} onPress={handleAddDay}>
-        <MaterialIcons name="add" size={24} color="white" />
-      </TouchableOpacity>
+
+      <FAB.Group
+        onStateChange={onStateChange}
+        open={open}
+        visible
+        icon={open ? "close" : "menu"}
+        actions={[
+          { icon: "plus", label: "Add Day", onPress: handleAddDay },
+          {
+            icon: syncLoading ? "progress-clock" : "cloud-download",
+            label: "Sync API With Local Database",
+            onPress: syncAPIWithLocalDb,
+          },
+        ]}
+      />
 
       {/* Bottom Sheet with custom backdrop */}
       <BottomSheet
         index={-1} // initially closed
         ref={bottomSheetRef}
-        // snapPoints={snapPoints}
         enablePanDownToClose
         onChange={handleSheetChanges}
         backgroundStyle={{ backgroundColor: theme.colors.surface }}
-        backdropComponent={CustomBackdrop} // blocks background clicks + dim overlay
-        handleIndicatorStyle={styles.handleIndicator} // optional styling
+        backdropComponent={CustomBackdrop}
+        handleIndicatorStyle={styles.handleIndicator}
       >
-        {/* Use BottomSheetScrollView for smooth scrolling inside the sheet */}
         <BottomSheetView style={styles.sheetContainer}>
           <BottomSheetScrollView contentContainerStyle={styles.sheetScrollContent}>
-            <EventSelector
-              events={eventsData?.events || []}
-              refetchDays={refetchAllDays}
-              selectedDay={selectedDay}
-              onClose={() => bottomSheetRef.current?.close()}
-            />
+            {eventsData && (
+              <EventSelector
+                events={eventsData}
+                refetchDays={refetchAllDays}
+                selectedDay={selectedDay}
+                onClose={() => bottomSheetRef.current?.close()}
+              />
+            )}
           </BottomSheetScrollView>
         </BottomSheetView>
       </BottomSheet>
@@ -189,16 +228,12 @@ export default function DayPage() {
           <View style={styles.modalActions}>
             <Button
               mode="contained"
-              onPress={() => handleDelete(selectedDay?.id || "")}
+              onPress={() => handleDelete(selectedDay?.id!)}
               style={styles.modalButton}
             >
               Delete
             </Button>
-            <Button
-              mode="outlined"
-              onPress={() => setDeleteModalVisible(false)}
-              style={styles.modalButton}
-            >
+            <Button mode="outlined" onPress={() => setDeleteModalVisible(false)} style={styles.modalButton}>
               Cancel
             </Button>
           </View>
@@ -232,7 +267,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 6,
   },
-
   // Bottom Sheet styling
   sheetContainer: {
     flex: 1,
@@ -248,7 +282,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginVertical: 8,
   },
-
   // Modal styling
   modalContent: {
     padding: 20,
@@ -276,4 +309,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
   },
-})
+});

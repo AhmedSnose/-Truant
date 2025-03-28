@@ -1,16 +1,12 @@
 import { relations } from "drizzle-orm";
-import {
-  sqliteTable,
-  text,
-  integer,
-} from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 
 // Category Table with self-referential parent
 // @ts-ignore
 export const categories = sqliteTable("categories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
-// @ts-ignore
+  // @ts-ignore
   parentId: integer("parent_id").references(() => categories.id),
 });
 
@@ -59,22 +55,26 @@ export const sprints = sqliteTable("sprints", {
   statusId: integer("status_id")
     .notNull()
     .references(() => statuses.id),
+  isSynced: integer("is_synced").notNull().default(0),
+  referenceId: text("reference_id"),
 });
 
 // Day Table
 export const days = sqliteTable("days", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  sprintId: integer("sprint_id")
-    .notNull()
-    .references(() => sprints.id, { onDelete: "cascade" }),
+  sprintId: integer("sprint_id").references(() => sprints.id, {
+    onDelete: "cascade",
+  }),
   title: text("title").notNull(),
   date: text("date").notNull(),
   totalTime: integer("total_time").notNull().default(0),
   goalTime: integer("goal_time").notNull().default(0),
   report: text("report"),
   statusId: integer("status_id")
-    .notNull()
+    // .notNull()
     .references(() => statuses.id),
+  referenceId: text("reference_id"),
+  isSynced: integer("is_synced").notNull().default(0),
 });
 
 // Event Table
@@ -92,8 +92,9 @@ export const events = sqliteTable("events", {
   statusId: integer("status_id")
     .notNull()
     .references(() => statuses.id),
-  truantId: integer("truant_id")
-    .references(() => truants.id),
+  truantId: integer("truant_id").references(() => truants.id),
+  referenceId: text("reference_id"),
+  isSynced: integer("is_synced").notNull().default(0),
 });
 
 // Relations

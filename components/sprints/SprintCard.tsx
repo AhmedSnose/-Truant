@@ -64,9 +64,9 @@ export default function SprintCard({
           <TouchableRipple onPress={onUpdate} style={styles.actionButton}>
             <MaterialIcons name="edit" size={24} color={theme.colors.primary} />
           </TouchableRipple>
-          <TouchableRipple onPress={onLink} style={styles.actionButton}>
+          {/* <TouchableRipple onPress={onLink} style={styles.actionButton}>
             <MaterialIcons name="link" size={24} color={theme.colors.secondary} />
-          </TouchableRipple>
+          </TouchableRipple> */}
         </Card.Actions>
       </Card>
     </TouchableRipple>

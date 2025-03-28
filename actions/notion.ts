@@ -213,7 +213,7 @@ export const updateSprint = async (
   id: string,
   data: {
     days: any;
-    id: string;
+    id?: string;
     title: string;
     totalTime: string | null;
     goalTime: string | null;

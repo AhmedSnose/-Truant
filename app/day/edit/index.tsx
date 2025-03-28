@@ -1,4 +1,6 @@
-import { addDay, updateDay } from "@/actions/notion"
+"use client"
+import * as schema from "@/db/schema";
+import { addDay, updateDay } from "@/actions/notion/days"
 import StatusDropdown from "@/components/truant/StatusDropdown"
 import { Status } from "@/db/schema"
 import { useRoute } from "@react-navigation/native"
@@ -14,8 +16,14 @@ import {
   Text,
   Switch,
   useTheme,
+  Snackbar,
+  Modal,
+  Portal,
 } from "react-native-paper"
 import { DatePickerModal } from "react-native-paper-dates"
+
+// Local DB day service functions
+import { post as createDayLocal, update as updateDayLocal, show as showDayLocal } from "@/services/DayService"
 
 type FormData = {
   title: string
@@ -23,6 +31,8 @@ type FormData = {
   totalTime: number
   report?: string
   status: Status
+  // Notion page reference id (as string). If empty, treated as null.
+  referenceId?: string
 }
 
 const ERROR_MESSAGES = {
@@ -35,7 +45,8 @@ export default function DayEditPage() {
   const route = useRoute()
   const queryClient = useQueryClient()
 
-  const { dayData }: any = route.params
+  // Retrieve dayData from navigation parameters
+  const { dayData } = route.params as { dayData?: schema.Day }
 
   // Default date is today's date if not provided
   const defaultDate = new Date().toISOString().split("T")[0]
@@ -47,22 +58,30 @@ export default function DayEditPage() {
     setValue,
     watch,
   } = useForm<FormData>({
-    defaultValues: dayData || {
-      title: "",
-      date: defaultDate, // automatically use today's date
-      totalTime: 0,
-      report: "",
-      status: null as any,
+    defaultValues: {
+      title: dayData?.title,
+      date: dayData?.date || defaultDate,
+      totalTime: dayData?.totalTime || 0,
+      report: dayData?.report || '',
+      status: null,
+      referenceId: dayData?.referenceId || '',
     },
   })
 
   const [datePickerVisible, setDatePickerVisible] = React.useState(false)
   const [useTodayDate, setUseTodayDate] = React.useState<boolean>(
-    // If dayData has a date, default to false. If no dayData, default to true.
     dayData?.date ? false : true
   )
 
-  // If user toggles "Use Today’s Date," set the date in the form to today
+  // Snackbar for toaster messages
+  const [snackbarVisible, setSnackbarVisible] = React.useState(false)
+  const [snackbarMsg, setSnackbarMsg] = React.useState("")
+
+  // Error confirmation modal state (for reference removal)
+  const [errorModalVisible, setErrorModalVisible] = React.useState(false)
+  const [errorModalMessage, setErrorModalMessage] = React.useState("")
+
+  // If user toggles "Use Today's Date," update the date value
   React.useEffect(() => {
     if (useTodayDate) {
       setValue("date", defaultDate)
@@ -70,26 +89,95 @@ export default function DayEditPage() {
   }, [useTodayDate])
 
   const onSubmit = async (data: FormData) => {
-    // If the user left the date blank for any reason, default to today
+    // If date is somehow blank, default to today
     if (!data.date) {
       data.date = defaultDate
     }
-
     try {
-      if (dayData) {
-        // Updating an existing day
-        //@ts-ignore
-        await updateDay(dayData.id, data)
-      } else {
-        // Creating a new day
-        //@ts-ignore
-        await addDay(data)
-      }
+      // Prepare referenceId: if empty string then treat as null
+      const referenceIdValue =
+        data.referenceId && data.referenceId.trim() !== ""
+          ? data.referenceId.trim()
+          : null
 
+      if (dayData) {
+        // Update the local day and mark as unsynced (isSynced: 0)
+        await updateDayLocal(dayData.id, { ...data, isSynced: 0, referenceId: referenceIdValue })
+      } else {
+        // Create new local day (new records unsynced by default)
+        await createDayLocal({ ...data, isSynced: 0, referenceId: referenceIdValue })
+      }
       queryClient.invalidateQueries(["fetchAllDays"] as never)
       navigation.goBack()
     } catch (error) {
       console.error("Error saving day:", error)
+      setSnackbarMsg("Error saving day")
+      setSnackbarVisible(true)
+    }
+  }
+
+  // Sync function for day edit page – only applicable when editing an existing day
+  const handleSync = async () => {
+    if (!dayData) return
+    try {
+      // Retrieve the latest local day data
+      const localDay = await showDayLocal(dayData.id)
+      let updatedReferenceId = localDay.referenceId
+
+      const payload = {
+        title: localDay.title,
+        totalTime: localDay.totalTime ? localDay.totalTime.toString() : "0",
+        goalTime: localDay.goalTime ? localDay.goalTime.toString() : "0",
+        date: localDay.date,
+        report: localDay.report || "",
+        status: localDay.status, // Adjust if you need to send more info about status
+      }
+
+      if (localDay.referenceId) {
+        // Update existing Notion page using your Notion API update function
+        console.log(localDay,'localDay');
+        
+        await updateDay(localDay.referenceId, payload)
+      } else {
+        // Create a new Notion page and get the new reference ID
+        const result = await addDay(payload)
+        updatedReferenceId = result?.id
+      }
+
+      // Update the local record: mark it as synced and store the Notion reference ID
+      await updateDayLocal(dayData.id, { ...localDay, isSynced: 1, referenceId: updatedReferenceId })
+      queryClient.invalidateQueries(["fetchAllDays"] as never)
+      setSnackbarMsg("Day synced successfully")
+      setSnackbarVisible(true)
+      navigation.goBack()
+    } catch (error: any) {
+      console.error("Error syncing day:", error)
+      if (error.code === "validation_error" && dayData.referenceId) {
+        // For example, if the page is archived
+        setErrorModalMessage(error.message || "Validation error occurred.")
+        setErrorModalVisible(true)
+      } else {
+        setSnackbarMsg(error.message || "Sync failed")
+        setSnackbarVisible(true)
+      }
+    }
+  }
+
+  // Called when the user confirms removal of the Notion reference link in the error modal
+  const handleRemoveReference = async () => {
+    if (!dayData) return
+    try {
+      await updateDayLocal(dayData.id, { ...dayData, isSynced: 0, referenceId: null })
+      queryClient.invalidateQueries(["fetchAllDays"] as never)
+      setSnackbarMsg("Reference removed. Please try syncing again.")
+      setSnackbarVisible(true)
+      navigation.goBack()
+    } catch (error) {
+      console.error("Error removing reference:", error)
+      setSnackbarMsg("Error removing reference")
+      setSnackbarVisible(true)
+    } finally {
+      setErrorModalVisible(false)
     }
   }
 
@@ -189,7 +277,6 @@ export default function DayEditPage() {
       {/* REPORT (Optional) */}
       <Controller
         control={control}
-        // "report" is optional → no "required" rule
         render={({ field: { onChange, onBlur, value } }) => (
           <>
             <TextInput
@@ -232,13 +319,54 @@ export default function DayEditPage() {
       />
 
       {/* SUBMIT BUTTON */}
-      <Button
-        mode="contained"
-        onPress={handleSubmit(onSubmit)}
-        style={styles.submitButton}
-      >
+      <Button mode="contained" onPress={handleSubmit(onSubmit)} style={styles.submitButton}>
         {dayData ? "Update Day" : "Add Day"}
       </Button>
+
+      {/* Sync button visible only in edit mode */}
+      {dayData && (
+        <Button mode="outlined" onPress={handleSync} style={styles.syncButton}>
+          Sync With Notion
+        </Button>
+      )}
+
+      {/* Snackbar for toaster messages */}
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        style={{ marginBottom: 70 }}
+        action={{
+          label: "Dismiss",
+          onPress: () => setSnackbarVisible(false),
+        }}
+      >
+        {snackbarMsg}
+      </Snackbar>
+
+      {/* Error Confirmation Modal */}
+      <Portal>
+        <Modal
+          visible={errorModalVisible}
+          onDismiss={() => setErrorModalVisible(false)}
+          contentContainerStyle={[styles.modalContent, { backgroundColor: theme.colors.surface }]}
+        >
+          <Text style={[styles.modalText, { color: theme.colors.onSurface }]}>
+            {errorModalMessage}
+          </Text>
+          <Text style={[styles.modalText, { color: theme.colors.onSurface, marginVertical: 8 }]}>
+            Do you want to remove the reference link?
+          </Text>
+          <View style={styles.modalActions}>
+            <Button mode="contained" onPress={handleRemoveReference} style={styles.modalButton}>
+              Remove Reference
+            </Button>
+            <Button mode="outlined" onPress={() => setErrorModalVisible(false)} style={styles.modalButton}>
+              Cancel
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
     </View>
   )
 }
@@ -275,4 +403,24 @@ const styles = StyleSheet.create({
   submitButton: {
     marginTop: 16,
   },
-})
+  syncButton: {
+    marginTop: 16,
+  },
+  modalContent: {
+    padding: 20,
+    margin: 20,
+    borderRadius: 8,
+  },
+  modalText: {
+    fontSize: 16,
+    textAlign: "center",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 16,
+  },
+  modalButton: {
+    marginHorizontal: 10,
+  },
+});
