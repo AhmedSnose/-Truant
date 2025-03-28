@@ -1,0 +1,1 @@
+ALTER TABLE `sprints` ADD `is_synced` integer DEFAULT 0 NOT NULL;

@@ -1,0 +1,1 @@
+ALTER TABLE `sprints` DROP COLUMN `notion_id`;
